@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Memuat Ujian...</title>
+    <style>
+        :root { --primary-color: #0056b3; --secondary-color: #007bff; --bg-color: #f4f6f9; --text-color: #333; --light-text: #f8f9fa; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: var(--bg-color); color: var(--text-color); overflow: hidden; }
+        .screen { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; padding: 20px; box-sizing: border-box; text-align: center; }
+        .hidden { display: none !important; }
+        .content-wrapper { max-width: 700px; }
+        header { display: flex; flex-direction: column; align-items: center; gap: 15px; margin-bottom: 25px; }
+        .logo { max-height: 90px; }
+        h1 { font-size: 2em; margin: 0; color: var(--primary-color); }
+        h2 { font-size: 1.6em; }
+        .rules { background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; padding: 15px; margin: 20px 0; border-radius: 8px; text-align: left; }
+        .rules ul { padding-left: 20px; margin: 10px 0 0; }
+        button { background-color: var(--secondary-color); color: white; border: none; padding: 15px 30px; font-size: 1.2em; border-radius: 8px; cursor: pointer; transition: background-color 0.3s, transform 0.2s; }
+        button:hover { background-color: var(--primary-color); transform: scale(1.05); }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        #exam-container { width: 100%; height: 100%; position: relative; }
+        #gform-frame { width: 100%; height: 100%; border: none; }
+        #timer-display { position: fixed; top: 10px; right: 20px; background-color: rgba(0, 0, 0, 0.8); color: var(--light-text); padding: 10px 20px; border-radius: 25px; font-size: 1.5em; font-weight: bold; z-index: 1000; }
+        #timer-display.warning { background-color: #d9534f; }
+        .message-box { background-color: #2a2a2a; color:white; padding: 40px; border-radius: 15px; }
+        footer { position: fixed; bottom: 0; left: 0; width: 100%; background-color: #343a40; color: var(--light-text); text-align: center; padding: 8px 0; font-size: 0.8em; z-index: 1001; }
+    </style>
+</head>
+<body>
+
+    <!-- Layar Pemuatan Awal -->
+    <div id="loading-screen" class="screen">
+        <h1>Memuat Konfigurasi Ujian...</h1>
+        <p>Harap tunggu sebentar.</p>
+    </div>
+
+    <!-- Layar Selamat Datang -->
+    <div id="welcome-screen" class="screen hidden">
+        <div class="content-wrapper">
+            <header>
+                <img id="logo-sekolah" src="" alt="Logo Sekolah" class="logo">
+                <h1 id="nama-sekolah"></h1>
+            </header>
+            <main>
+                <h2 id="nama-mapel"></h2>
+                <p>Durasi Pengerjaan: <strong id="durasi-ujian"></strong>.</p>
+                <div class="rules">
+                    <strong>PERHATIAN!</strong>
+                    <ul>
+                        <li>Klik tombol di bawah akan mengunci layar Anda dalam mode layar penuh.</li>
+                        <li>Jangan keluar, beralih tab, atau membuka aplikasi lain selama ujian.</li>
+                    </ul>
+                </div>
+                <button id="enter-fullscreen-btn">Kunci Layar & Mulai Ujian</button>
+            </main>
+        </div>
+    </div>
+    
+    <!-- Kontainer Ujian -->
+    <div id="exam-container" class="hidden">
+       <div id="timer-display">--:--:--</div>
+       <iframe id="gform-frame" src="" frameborder="0">Memuat…</iframe>
+    </div>
+
+    <!-- Layar Waktu Habis -->
+    <div id="times-up-overlay" class="screen hidden">
+        <div class="message-box">
+            <h1>WAKTU HABIS</h1>
+            <p>Waktu pengerjaan ujian telah berakhir.</p>
+        </div>
+    </div>
+    
+    <footer>
+  	<span id="copyright-text"></span> | <a id="pembuat-link" href="#" target="_blank" rel="noopener noreferrer"></a>
+    </footer>
+
+    <script>
+        // ================================================================
+        // PASTE URL WEB APP DARI GOOGLE APPS SCRIPT ANDA DI SINI
+        const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz-P4pOZ9njEZLUiYnBwADfXsTPvOamE-R9FiuNmOP1_CXlhKNHa9BO6vvF1Gq2Y4b5/exec";
+        // ================================================================
+
+        // Pengambilan elemen
+        const loadingScreen = document.getElementById('loading-screen');
+        const welcomeScreen = document.getElementById('welcome-screen');
+        const examContainer = document.getElementById('exam-container');
+        const timesUpOverlay = document.getElementById('times-up-overlay');
+        const enterFullscreenBtn = document.getElementById('enter-fullscreen-btn');
+        
+        let examConfig = {};
+        let examIsActive = false;
+        let timerInterval;
+
+        // 1. Ambil data konfigurasi dari Google Apps Script
+        async function fetchConfig() {
+            try {
+                const response = await fetch(APPS_SCRIPT_URL);
+                if (!response.ok) throw new Error("Gagal mengambil data dari server.");
+                examConfig = await response.json();
+                populateUI();
+            } catch (error) {
+                loadingScreen.innerHTML = `<h1>Gagal Memuat</h1><p>Tidak dapat terhubung ke server ujian. Pastikan URL Apps Script benar dan sudah di-deploy.</p><p>Error: ${error.message}</p>`;
+            }
+        }
+
+        // 2. Isi data ke elemen HTML
+	function populateUI() {
+    		document.title = examConfig.NAMA_SEKOLAH + " - Ujian Online";
+    		document.getElementById('logo-sekolah').src = examConfig.LOGO_URL;
+    		document.getElementById('nama-sekolah').textContent = examConfig.NAMA_SEKOLAH;
+    		document.getElementById('nama-mapel').textContent = examConfig.NAMA_MAPEL;
+    		document.getElementById('durasi-ujian').textContent = examConfig.DURASI_UJIAN_MENIT + " menit";
+    		document.getElementById('gform-frame').src = examConfig.GFORM_URL;
+    		document.getElementById('copyright-text').textContent = examConfig.COPYRIGHT_TEXT;
+
+ 	   // Logika baru untuk link pembuat
+    		const pembuatLinkElement = document.getElementById('pembuat-link');
+    		pembuatLinkElement.textContent = examConfig.PEMBUAT; // Set teksnya
+    		if (examConfig.PEMBUAT_LINK) {
+        		pembuatLinkElement.href = examConfig.PEMBUAT_LINK; // Set URL link jika ada
+    		} else {
+           // Jika tidak ada link, buat agar tidak bisa diklik
+        	pembuatLinkElement.href = "javascript:void(0)"; 
+        	pembuatLinkElement.style.cursor = "default";
+        	pembuatLinkElement.style.textDecoration = "none";
+        	pembuatLinkElement.removeAttribute("target");
+    	}
+
+    		loadingScreen.classList.add('hidden');
+    		welcomeScreen.classList.remove('hidden');
+	}
+
+        // 3. Fungsi untuk memulai ujian
+        function startExam() {
+            welcomeScreen.classList.add('hidden');
+            document.querySelector('footer').classList.add('hidden');
+            examContainer.classList.remove('hidden');
+            
+            examIsActive = true;
+            activateSecurityListeners();
+            startTimer(examConfig.DURASI_UJIAN_MENIT);
+        }
+
+        function startTimer(durationInMinutes) {
+            let timer = durationInMinutes * 60;
+            timerInterval = setInterval(() => {
+                if (--timer < 0) {
+                    clearInterval(timerInterval);
+                    endExam();
+                    return;
+                }
+                const hours = Math.floor(timer / 3600);
+                const minutes = Math.floor((timer % 3600) / 60);
+                const seconds = timer % 60;
+                document.getElementById('timer-display').textContent = `${("0"+hours).slice(-2)}:${("0"+minutes).slice(-2)}:${("0"+seconds).slice(-2)}`;
+                if (timer <= 300) document.getElementById('timer-display').classList.add('warning');
+            }, 1000);
+        }
+
+        function endExam() {
+            examIsActive = false;
+            examContainer.classList.add('hidden');
+            timesUpOverlay.classList.remove('hidden');
+            document.querySelector('footer').classList.remove('hidden');
+            if (document.fullscreenElement) document.exitFullscreen();
+        }
+
+        function handleSecurityViolation(reason) {
+            if (!examIsActive) return;
+            examIsActive = false;
+            alert(`PELANGGARAN: ${reason}. Halaman akan dimuat ulang.`);
+            location.reload();
+        }
+        
+        function activateSecurityListeners() {
+            window.addEventListener('blur', () => handleSecurityViolation("Beralih dari jendela ujian"));
+            document.addEventListener('keydown', (e) => {
+                if ((e.ctrlKey || e.metaKey) && 'cvupst'.includes(e.key.toLowerCase())) e.preventDefault();
+                if (['F11', 'Escape'].includes(e.key)) e.preventDefault();
+            });
+            document.addEventListener('fullscreenchange', () => {
+                if (!document.fullscreenElement && examIsActive) handleSecurityViolation("Keluar dari mode layar penuh");
+            });
+        }
+        
+        // Event Listener untuk tombol utama
+        enterFullscreenBtn.addEventListener('click', () => {
+            document.documentElement.requestFullscreen()
+                .then(startExam)
+                .catch(err => alert("Gagal masuk mode layar penuh. Harap izinkan permintaan dari browser."));
+        });
+
+        // Jalankan pengambilan data saat halaman dimuat
+        fetchConfig();
+    </script>
+</body>
+</html>
