@@ -99,31 +99,33 @@
         try {
             const response = await fetch(APPS_SCRIPT_URL);
             if (!response.ok) throw new Error("Gagal mengambil data dari server.");
-            examConfig = await response.json();
+            const config = await response.json();
             // Simpan konfigurasi ke sessionStorage agar tidak perlu fetch ulang saat refresh
-            sessionStorage.setItem('examConfig', JSON.stringify(examConfig));
-            initializePage();
+            sessionStorage.setItem('examConfig', JSON.stringify(config));
+            return config;
         } catch (error) {
             loadingScreen.innerHTML = `<h1>Gagal Memuat</h1><p>Tidak dapat terhubung ke server ujian. Pastikan URL Apps Script benar dan sudah di-deploy.</p><p>Error: ${error.message}</p>`;
+            return null;
         }
     }
 
     // 2. Isi data ke elemen HTML
-    function populateUI() {
-        document.title = examConfig.NAMA_SEKOLAH + " - Ujian Online";
-        document.getElementById('logo-sekolah').src = examConfig.LOGO_URL;
-        document.getElementById('nama-sekolah').textContent = examConfig.NAMA_SEKOLAH;
-        document.getElementById('nama-mapel').textContent = examConfig.NAMA_MAPEL;
-        document.getElementById('durasi-ujian').textContent = examConfig.DURASI_UJIAN_MENIT + " menit";
-        document.getElementById('gform-frame').src = examConfig.GFORM_URL;
-        document.getElementById('copyright-text').textContent = examConfig.COPYRIGHT_TEXT;
+    function populateUI(config) {
+        examConfig = config;
+        document.title = config.NAMA_SEKOLAH + " - Ujian Online";
+        document.getElementById('logo-sekolah').src = config.LOGO_URL;
+        document.getElementById('nama-sekolah').textContent = config.NAMA_SEKOLAH;
+        document.getElementById('nama-mapel').textContent = config.NAMA_MAPEL;
+        document.getElementById('durasi-ujian').textContent = config.DURASI_UJIAN_MENIT + " menit";
+        document.getElementById('gform-frame').src = config.GFORM_URL;
+        document.getElementById('copyright-text').textContent = config.COPYRIGHT_TEXT;
         
         const pembuatLinkElement = document.getElementById('pembuat-link');
-        pembuatLinkElement.textContent = examConfig.PEMBUAT;
-        if (examConfig.PEMBUAT_LINK) {
-            pembuatLinkElement.href = examConfig.PEMBUAT_LINK;
+        pembuatLinkElement.textContent = config.PEMBUAT;
+        if (config.PEMBUAT_LINK) {
+            pembuatLinkElement.href = config.PEMBUAT_LINK;
         } else {
-            pembuatLinkElement.href = "javascript:void(0)"; 
+            pembuatLinkElement.href = "javascript:void(0)";
             pembuatLinkElement.style.cursor = "default";
             pembuatLinkElement.style.textDecoration = "none";
             pembuatLinkElement.removeAttribute("target");
@@ -132,19 +134,19 @@
 
     // 3. Fungsi untuk memulai ujian
     function startExam() {
-        // --- LOGIKA BARU ---
-        // Simpan waktu berakhir dan status ujian di sessionStorage
+        // --- LOGIKA BARU: Simpan waktu berakhir dan status ujian di sessionStorage
         const endTime = Date.now() + examConfig.DURASI_UJIAN_MENIT * 60 * 1000;
         sessionStorage.setItem('examEndTime', endTime);
         sessionStorage.setItem('examInProgress', 'true');
         // --- SELESAI LOGIKA BARU ---
         
-        showExamView(); // Panggil fungsi baru untuk menampilkan ujian
+        showExamView(); // Panggil fungsi untuk menampilkan ujian
     }
 
     // [BARU] Fungsi terpisah untuk menampilkan tampilan ujian
     function showExamView() {
         welcomeScreen.classList.add('hidden');
+        loadingScreen.classList.add('hidden');
         document.querySelector('footer').classList.add('hidden');
         examContainer.classList.remove('hidden');
         
@@ -176,7 +178,7 @@
     }
 
     function endExam() {
-        // Hapus penanda dari sessionStorage
+        // Hapus penanda dari sessionStorage untuk sesi ujian yang bersih
         sessionStorage.removeItem('examInProgress');
         sessionStorage.removeItem('examEndTime');
         sessionStorage.removeItem('examConfig');
@@ -213,25 +215,23 @@
             .catch(err => alert("Gagal masuk mode layar penuh. Harap izinkan permintaan dari browser."));
     });
 
-    // [BARU] Fungsi utama untuk inisialisasi halaman
-    function initializePage() {
+    // [BARU] Fungsi utama untuk inisialisasi halaman saat pertama kali dimuat
+    async function initializePage() {
         const isInProgress = sessionStorage.getItem('examInProgress') === 'true';
-        const storedConfig = sessionStorage.getItem('examConfig');
+        let storedConfig = sessionStorage.getItem('examConfig');
 
-        if (storedConfig) {
-            examConfig = JSON.parse(storedConfig);
-            populateUI();
-        } else {
-            fetchConfig(); // Hanya fetch jika tidak ada di session
-            return;
-        }
-        
-        if (isInProgress) {
-            console.log("Ujian terdeteksi sedang berlangsung. Melanjutkan sesi...");
+        if (isInProgress && storedConfig) {
+            console.log("Sesi ujian sedang berlangsung, melanjutkan...");
+            populateUI(JSON.parse(storedConfig));
             showExamView();
         } else {
-            loadingScreen.classList.add('hidden');
-            welcomeScreen.classList.remove('hidden');
+            console.log("Memulai sesi ujian baru...");
+            const config = await fetchConfig();
+            if (config) {
+                populateUI(config);
+                loadingScreen.classList.add('hidden');
+                welcomeScreen.classList.remove('hidden');
+            }
         }
     }
     
